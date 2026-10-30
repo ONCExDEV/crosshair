@@ -21,6 +21,12 @@ pub struct Profile {
     pub circle_radius: u32,
     pub circle_thick: u32,
 
+    pub square: bool,
+    /// Side length in pixels.
+    pub square_size: u32,
+    pub square_thick: u32,
+    pub square_filled: bool,
+
     pub use_image: bool,
     pub image_path: String,
     pub image_scale: f32,
@@ -57,6 +63,10 @@ impl Default for Profile {
             circle: false,
             circle_radius: 12,
             circle_thick: 2,
+            square: false,
+            square_size: 16,
+            square_thick: 2,
+            square_filled: false,
             use_image: false,
             image_path: String::new(),
             image_scale: 1.0,
@@ -81,6 +91,8 @@ impl Profile {
         self.dot_size = self.dot_size.clamp(1, 60);
         self.circle_radius = self.circle_radius.clamp(1, 300);
         self.circle_thick = self.circle_thick.clamp(1, 40);
+        self.square_size = self.square_size.clamp(2, 200);
+        self.square_thick = self.square_thick.clamp(1, 40);
         self.outline_thick = self.outline_thick.min(10);
         self.opacity = self.opacity.clamp(0.05, 1.0);
         self.image_scale = self.image_scale.clamp(0.1, 8.0);
@@ -127,6 +139,16 @@ pub fn presets() -> Vec<Profile> {
             circle: true,
             circle_radius: 14,
             color: [255, 214, 0, 255],
+            ..base.clone()
+        },
+        Profile {
+            name: "Square".into(),
+            cross: false,
+            dot: true,
+            dot_size: 2,
+            square: true,
+            square_size: 14,
+            color: [255, 64, 64, 255],
             ..base.clone()
         },
         Profile {
@@ -219,10 +241,15 @@ pub fn path() -> PathBuf {
 
 impl Config {
     pub fn load() -> Self {
-        let mut cfg = std::fs::read_to_string(path())
-            .ok()
-            .and_then(|s| toml::from_str::<Config>(&s).ok())
-            .unwrap_or_default();
+        let mut cfg = match std::fs::read_to_string(path()) {
+            Ok(text) => toml::from_str::<Config>(&text).unwrap_or_else(|_| {
+                // Hand-edited file that no longer parses: keep a copy so the
+                // next save does not silently destroy the user's profiles.
+                let _ = std::fs::copy(path(), dir().join("config.toml.bak"));
+                Config::default()
+            }),
+            Err(_) => Config::default(),
+        };
         cfg.sanitize();
         cfg
     }

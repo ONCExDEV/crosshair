@@ -1,6 +1,6 @@
 [package]
 name = "crosshair"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 description = "Tiny, injection-free crosshair overlay for Windows"
 license = "MIT"
@@ -18,6 +18,8 @@ path = "src/main.rs"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 base64 = "0.22"
+serde_json = "1"
+sha2 = "0.10"
 tiny-skia = "0.11"
 eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
 rfd = { version = "0.15", default-features = false }
@@ -30,6 +32,7 @@ version = "0.58"
 features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
+    "Win32_Networking_WinHttp",
     "Win32_Security",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",

@@ -22,12 +22,13 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 
 ## Features
 
-- 🎯 **Any shape you want.** Cross, T-style, X, dot, ring, or your own PNG. Length, thickness, gap, rotation, color, opacity and outline are all adjustable.
+- 🎯 **Any shape you want.** Cross, T-style, X, dot, ring, square, or your own PNG. Combine them in one profile. Length, thickness, gap, rotation, color, opacity and outline are all adjustable.
 - 📐 **Pixel-perfect center.** The crosshair sits on the exact middle of your screen. Odd and even thicknesses are both drawn symmetrically.
 - 🖱️ **Place it anywhere.** Drag it with the mouse or nudge it with the arrow keys (Shift = 10 px). Works on every monitor.
 - 🎮 **Profile per game.** List the programs that belong to a profile and it switches automatically when you tab in. You can also show the crosshair only in those games.
-- ⌨️ **Global hotkeys.** Show or hide, next profile, move mode and settings, from anywhere. You can change all of them.
+- ⌨️ **Global hotkeys.** Show or hide, next profile, move mode and settings, from anywhere. Click a hotkey, press the new combination, done.
 - 🔗 **Share profiles.** Copy a short code, send it to a friend, and they import it in one click.
+- 🔄 **Updates on your terms.** An **Update** button appears in the settings only when GitHub has a newer version. Nothing is downloaded until you press it.
 - 🛡️ **No injection.** It only draws its own transparent window. No hooks into games, no memory reading, no screen capture. See [Is it safe?](#is-it-safe)
 - 🪶 **Tiny and light.** The overlay uses about 2 MB of RAM and 0% CPU while idle. The settings window only runs while it is open, and its memory is freed when you close it.
 
@@ -40,7 +41,7 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 <td align="center"><img src="docs/position.png" width="360" alt="Position"><br><sub><b>Position and monitor</b></sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/general.png" width="360" alt="General settings"><br><sub><b>Hotkeys and behavior</b></sub></td>
+<td align="center"><img src="docs/general.png" width="360" alt="Settings"><br><sub><b>Hotkeys and behavior</b></sub></td>
 <td align="center"><img src="docs/main.png" width="360" alt="Shape settings"><br><sub><b>Shapes, with live preview</b></sub></td>
 </tr>
 </table>
@@ -76,7 +77,7 @@ Every profile has its own shape, color and position. To make a profile switch on
 
 1. Open **Settings → Games** for that profile.
 2. Pick the game from **Running apps**, or type its program name, for example `game.exe`.
-3. Leave **Switch profile per game** on in **General**.
+3. Leave **Switch profile per game** on in **Settings**.
 
 Turn on **Only show in listed games** if you want the crosshair to disappear everywhere else.
 
@@ -95,9 +96,15 @@ The app is built to look like a normal desktop program to any game and anti-chea
 > [!IMPORTANT]
 > No overlay can promise zero risk. Some games or competitive platforms forbid overlays or crosshair tools no matter how they work, and anti-cheat rules change. Check the rules of each game before you use it. You use this app at your own risk.
 
+## Updating
+
+When you open the settings, the app asks GitHub once whether a newer release exists. If there is one, an **Update** button appears at the top. Nothing is downloaded before you press it. Then the app downloads the new version, checks it (size, file header and GitHub's SHA-256 checksum), replaces itself in the same place and restarts. Your profiles, shortcut and Start with Windows setting stay as they are. If anything goes wrong, the old version is kept.
+
+Only the settings window uses the network, and only for this. The overlay itself never connects to anything.
+
 ## Settings and uninstalling
 
-Your profiles are stored in `%APPDATA%\Crosshair\config.toml`. You can open the folder from **Settings → General → Config folder**. To remove the app:
+Your profiles are stored in `%APPDATA%\Crosshair\config.toml` and saved the moment you change something, so closing the app never loses them. You can open the folder from **Settings → About → Config folder**. To remove the app:
 1. Turn off **Start with Windows**, if you turned it on.
 2. Exit the app from the tray.
 3. Delete the `.exe` and the settings folder.
@@ -115,7 +122,7 @@ Your profiles are stored in `%APPDATA%\Crosshair\config.toml`. You can open the 
 <details>
 <summary><b>Building from source</b></summary>
 
-Only needed if you want to change the code. Install [Rust](https://rustup.rs) and the Visual Studio Build Tools ("Desktop development with C++"), then run:
+Only needed if you want to change the code. The updater looks for `crosshair.exe` in the latest release of this repository. Install [Rust](https://rustup.rs) and the Visual Studio Build Tools ("Desktop development with C++"), then run:
 
 ```
 cargo build --release

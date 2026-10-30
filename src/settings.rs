@@ -3,11 +3,14 @@
 
 
 use std::ops::RangeInclusive;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant, SystemTime};
 
 use eframe::egui::{self, vec2, Align, Align2, Color32, FontFamily, FontId, Layout, RichText, Stroke, TextStyle, Ui};
 use windows::core::w;
 use xh::config::{self, Config, Hotkey, Profile};
+use xh::update::{self, UpdateInfo};
 use xh::{render, win};
 
 const ACCENT: Color32 = Color32::from_rgb(91, 91, 240);
@@ -42,6 +45,19 @@ enum Page {
     General,
 }
 
+/// State of the update banner. Nothing is downloaded before the user presses Update.
+enum Upd {
+    Idle,
+    Available(UpdateInfo),
+    Downloading(u64),
+    Failed(String),
+}
+
+enum UpdMsg {
+    Checked(Result<Option<UpdateInfo>, String>),
+    Installed(Result<(), String>),
+}
+
 struct App {
     cfg: Config,
     sel: usize,
@@ -64,7 +80,12 @@ struct App {
     import_text: String,
     status: String,
     mons: Vec<win::MonitorInfo>,
-    keys: Vec<String>,
+    /// Title of the hotkey row that is waiting for a key press.
+    listening: Option<String>,
+
+    upd: Upd,
+    upd_rx: Option<mpsc::Receiver<UpdMsg>>,
+    upd_progress: Arc<AtomicU64>,
 }
 
 fn c32(c: [u8; 4]) -> Color32 {
@@ -113,8 +134,13 @@ impl App {
             import_text: String::new(),
             status: String::new(),
             mons: win::monitors(),
-            keys: config::key_names(),
+            listening: None,
+            upd: Upd::Idle,
+            upd_rx: None,
+            upd_progress: Arc::new(AtomicU64::new(0)),
         };
+        // One quiet check when the window opens. Nothing is downloaded.
+        app.spawn_check(ctx);
         // Optional flags, handy for screenshots: --page general --tab color --sel 2 --bg 2
         if arg("--page").as_deref() == Some("general") {
             app.page = Page::General;
@@ -136,6 +162,99 @@ impl App {
         app
     }
 
+    fn spawn_check(&mut self, ctx: &egui::Context) {
+        let (tx, rx) = mpsc::channel();
+        self.upd_rx = Some(rx);
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(UpdMsg::Checked(update::check()));
+            ctx.request_repaint();
+        });
+    }
+
+    /// Download, verify and install. Only runs after the user pressed Update.
+    fn start_update(&mut self, info: UpdateInfo, ctx: &egui::Context) {
+        self.upd = Upd::Downloading(info.size);
+        self.upd_progress.store(0, Ordering::Relaxed);
+        let (tx, rx) = mpsc::channel();
+        self.upd_rx = Some(rx);
+        let progress = self.upd_progress.clone();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result = match std::env::current_exe() {
+                Ok(exe) => {
+                    let file = update::download_target(&exe);
+                    let r = update::download(&info, &file, &progress).and_then(|_| update::replace(&file, &exe));
+                    if r.is_err() {
+                        update::clean_up(&exe);
+                    }
+                    r
+                }
+                Err(e) => Err(e.to_string()),
+            };
+            let _ = tx.send(UpdMsg::Installed(result));
+            ctx.request_repaint();
+        });
+    }
+
+    fn poll_update(&mut self) {
+        let Some(rx) = &self.upd_rx else { return };
+        let msgs: Vec<UpdMsg> = rx.try_iter().collect();
+        for m in msgs {
+            match m {
+                // Offline or no release: stay quiet, the banner just stays hidden.
+                UpdMsg::Checked(Ok(Some(info))) => self.upd = Upd::Available(info),
+                UpdMsg::Checked(_) => {}
+                UpdMsg::Installed(Ok(())) => {
+                    if self.dirty_since.is_some() {
+                        self.commit();
+                    }
+                    if let Ok(exe) = std::env::current_exe() {
+                        update::restart(&exe);
+                    }
+                }
+                UpdMsg::Installed(Err(e)) => self.upd = Upd::Failed(e),
+            }
+        }
+    }
+
+    fn update_banner(&mut self, ui: &mut Ui) {
+        let mut start: Option<UpdateInfo> = None;
+        let mut retry = false;
+        match &self.upd {
+            Upd::Idle => return,
+            Upd::Available(info) => {
+                let text = format!("Version {} is available (you have {}). Nothing is downloaded until you press Update.", info.version, update::show(update::current()));
+                info_banner(ui, &text, false, |ui| {
+                    if primary(ui, "Update") {
+                        start = Some(info.clone());
+                    }
+                });
+            }
+            Upd::Downloading(size) => {
+                let done = self.upd_progress.load(Ordering::Relaxed);
+                let pct = if *size > 0 { (done * 100 / size).min(100) } else { 0 };
+                info_banner(ui, &format!("Downloading the update... {pct}%"), false, |_| {});
+                ui.ctx().request_repaint_after(Duration::from_millis(150));
+            }
+            Upd::Failed(msg) => {
+                info_banner(ui, &format!("Update failed: {msg} Nothing was changed."), true, |ui| {
+                    if ui.button("Try again").clicked() {
+                        retry = true;
+                    }
+                });
+            }
+        }
+        ui.add_space(8.0);
+        if let Some(info) = start {
+            self.start_update(info, ui.ctx());
+        }
+        if retry {
+            self.upd = Upd::Idle;
+            self.spawn_check(ui.ctx());
+        }
+    }
+
     fn poll_external(&mut self) {
         if self.last_poll.elapsed() < Duration::from_millis(700) {
             return;
@@ -152,18 +271,23 @@ impl App {
         }
     }
 
+    /// Write the config to disk and tell the overlay to reload it.
+    fn commit(&mut self) {
+        self.cfg.sanitize();
+        if self.cfg.save().is_ok() {
+            self.last_mtime = Config::mtime();
+        }
+        win::notify(win::MSG_RELOAD);
+        self.dirty_since = None;
+    }
+
     fn flush(&mut self, changed: bool, ctx: &egui::Context) {
         if changed {
             self.dirty_since = Some(Instant::now());
         }
         if let Some(t) = self.dirty_since {
             if t.elapsed() >= Duration::from_millis(120) {
-                self.cfg.sanitize();
-                if self.cfg.save().is_ok() {
-                    self.last_mtime = Config::mtime();
-                }
-                win::notify(win::MSG_RELOAD);
-                self.dirty_since = None;
+                self.commit();
             } else {
                 ctx.request_repaint_after(Duration::from_millis(130));
             }
@@ -262,7 +386,7 @@ impl App {
         ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
             ui.label(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).size(12.0).color(MUTED));
             ui.add_space(4.0);
-            if Self::nav_row(ui, "General", self.page == Page::General, false).clicked() {
+            if Self::nav_row(ui, "Settings", self.page == Page::General, false).clicked() {
                 self.page = Page::General;
             }
         });
@@ -349,6 +473,12 @@ impl App {
         group(ui, "Circle", "A ring around the center", &mut p.circle, changed, |ui, ch| {
             row(ui, "Radius", "", |ui| *ch |= slider(ui, &mut p.circle_radius, 2..=80, " px"));
             row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.circle_thick, 1..=12, " px"));
+        });
+        ui.add_space(10.0);
+        group(ui, "Square", "A square frame around the center", &mut p.square, changed, |ui, ch| {
+            row(ui, "Size", "Side length", |ui| *ch |= slider(ui, &mut p.square_size, 2..=120, " px"));
+            row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.square_thick, 1..=12, " px"));
+            row(ui, "Filled", "Solid square instead of a frame", |ui| *ch |= toggle(ui, &mut p.square_filled));
         });
         ui.add_space(10.0);
         group(ui, "Custom image", "A PNG that replaces the shapes above", &mut p.use_image, changed, |ui, ch| {
@@ -489,7 +619,7 @@ impl App {
         }
         if !self.cfg.auto_switch {
             ui.add_space(8.0);
-            ui.colored_label(Color32::from_rgb(255, 180, 60), "Auto-switch is off in General, so this list is not used.");
+            ui.colored_label(Color32::from_rgb(255, 180, 60), "Auto-switch is off in Settings, so this list is not used.");
         }
     }
 
@@ -529,7 +659,7 @@ impl App {
     // ---------------------------------------------------------------- general
 
     fn general_page(&mut self, ui: &mut Ui, changed: &mut bool) {
-        ui.label(RichText::new("General").size(24.0).color(TEXT));
+        ui.label(RichText::new("Settings").size(24.0).color(TEXT));
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             caption(ui, "Behavior");
             card(ui, |ui| {
@@ -544,14 +674,18 @@ impl App {
             });
 
             caption(ui, "Hotkeys");
-            let keys = self.keys.clone();
             let hk = &mut self.cfg.hotkeys;
+            let listening = &mut self.listening;
             card(ui, |ui| {
-                hotkey_row(ui, "Show / hide", &mut hk.toggle, &keys, changed);
-                hotkey_row(ui, "Next profile", &mut hk.next, &keys, changed);
-                hotkey_row(ui, "Move crosshair", &mut hk.drag, &keys, changed);
-                hotkey_row(ui, "Open settings", &mut hk.settings, &keys, changed);
+                hotkey_row(ui, "Show / hide", "Turn the crosshair on or off from anywhere", &mut hk.toggle, listening, changed);
+                hotkey_row(ui, "Next profile", "Cycle through your profiles", &mut hk.next, listening, changed);
+                hotkey_row(ui, "Move crosshair", "Drag it, or use the arrow keys", &mut hk.drag, listening, changed);
+                hotkey_row(ui, "Open settings", "Open this window from anywhere", &mut hk.settings, listening, changed);
             });
+            if self.listening.is_some() {
+                ui.add_space(6.0);
+                ui.label(RichText::new("Press the new shortcut now. Esc cancels.").size(12.5).color(MUTED));
+            }
 
             caption(ui, "Safety");
             card(ui, |ui| {
@@ -563,6 +697,7 @@ impl App {
 
             caption(ui, "About");
             card(ui, |ui| {
+                row(ui, &format!("Crosshair {}", update::show(update::current())), "Checks GitHub once when this window opens. Installs only when you press Update.", |_| {});
                 row(ui, "Config folder", "Your profiles are stored here", |ui| {
                     if ui.button("Open").clicked() {
                         let _ = std::process::Command::new("explorer").arg(config::dir()).spawn();
@@ -680,6 +815,21 @@ fn primary(ui: &mut Ui, text: &str) -> bool {
     ui.add(b).on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 
+fn info_banner(ui: &mut Ui, text: &str, error: bool, add: impl FnOnce(&mut Ui)) {
+    let (fill, stroke, color) = if error {
+        (Color32::from_rgb(48, 24, 26), Color32::from_rgb(120, 50, 55), Color32::from_rgb(255, 160, 160))
+    } else {
+        (Color32::from_rgb(26, 28, 56), ACCENT, Color32::from_rgb(190, 192, 255))
+    };
+    egui::Frame::none().fill(fill).stroke(Stroke::new(1.0_f32, stroke)).rounding(8.0).inner_margin(egui::Margin::symmetric(12.0, 6.0)).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.set_width(ui.available_width());
+            ui.add(egui::Label::new(RichText::new(text).color(color)).wrap());
+            ui.with_layout(Layout::right_to_left(Align::Center), add);
+        });
+    });
+}
+
 fn pill(ui: &mut Ui, text: &str) {
     egui::Frame::none()
         .fill(Color32::from_rgb(28, 30, 60))
@@ -701,28 +851,107 @@ fn slider<N: egui::emath::Numeric>(ui: &mut Ui, v: &mut N, range: RangeInclusive
     .inner
 }
 
-fn chip(ui: &mut Ui, on: &mut bool, text: &str) -> bool {
-    let b = egui::Button::new(RichText::new(text).size(13.0).color(if *on { Color32::WHITE } else { MUTED }))
-        .fill(if *on { ACCENT } else { Color32::from_rgb(32, 32, 40) })
-        .stroke(Stroke::NONE)
-        .min_size(vec2(0.0, 26.0));
-    if ui.add(b).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-        *on = !*on;
-        return true;
+fn hotkey_text(h: &Hotkey) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if h.ctrl {
+        parts.push("Ctrl");
     }
-    false
+    if h.alt {
+        parts.push("Alt");
+    }
+    if h.shift {
+        parts.push("Shift");
+    }
+    parts.push(&h.key);
+    parts.join(" + ")
 }
 
-fn hotkey_row(ui: &mut Ui, label: &str, h: &mut Hotkey, keys: &[String], changed: &mut bool) {
-    row(ui, label, "", |ui| {
-        egui::ComboBox::from_id_salt(label).width(64.0).selected_text(&h.key).show_ui(ui, |ui| {
-            for k in keys {
-                *changed |= ui.selectable_value(&mut h.key, k.clone(), k).changed();
+/// Name used in the config file for a pressed key, if we support it.
+fn key_name(k: egui::Key) -> Option<String> {
+    use egui::Key as K;
+    const DIGITS: [(K, &str); 10] =
+        [(K::Num0, "0"), (K::Num1, "1"), (K::Num2, "2"), (K::Num3, "3"), (K::Num4, "4"), (K::Num5, "5"), (K::Num6, "6"), (K::Num7, "7"), (K::Num8, "8"), (K::Num9, "9")];
+    const NAMED: [(K, &str); 10] = [
+        (K::Insert, "Insert"),
+        (K::Delete, "Delete"),
+        (K::Home, "Home"),
+        (K::End, "End"),
+        (K::PageUp, "PageUp"),
+        (K::PageDown, "PageDown"),
+        (K::ArrowLeft, "Left"),
+        (K::ArrowUp, "Up"),
+        (K::ArrowRight, "Right"),
+        (K::ArrowDown, "Down"),
+    ];
+    if let Some((_, n)) = DIGITS.iter().chain(NAMED.iter()).find(|(key, _)| *key == k) {
+        return Some((*n).to_string());
+    }
+    let n = k.name();
+    let is_letter = n.len() == 1 && n.chars().all(|c| c.is_ascii_uppercase());
+    let is_f = n.starts_with('F') && n[1..].parse::<u32>().map(|i| (1..=12).contains(&i)).unwrap_or(false);
+    (is_letter || is_f).then(|| n.to_string())
+}
+
+enum Captured {
+    Cancel,
+    Keys(Hotkey),
+}
+
+/// The next key press while listening. Esc cancels.
+fn capture_hotkey(ctx: &egui::Context) -> Option<Captured> {
+    ctx.input(|i| {
+        for e in &i.events {
+            if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
+                if *key == egui::Key::Escape {
+                    return Some(Captured::Cancel);
+                }
+                if let Some(name) = key_name(*key) {
+                    return Some(Captured::Keys(Hotkey { ctrl: modifiers.ctrl, alt: modifiers.alt, shift: modifiers.shift, key: name }));
+                }
             }
-        });
-        *changed |= chip(ui, &mut h.shift, "Shift");
-        *changed |= chip(ui, &mut h.alt, "Alt");
-        *changed |= chip(ui, &mut h.ctrl, "Ctrl");
+        }
+        None
+    })
+}
+
+/// A hotkey row. Click the button, then press the new shortcut.
+fn hotkey_row(ui: &mut Ui, title: &str, sub: &str, h: &mut Hotkey, listening: &mut Option<String>, changed: &mut bool) {
+    let mine = listening.as_deref() == Some(title);
+    row(ui, title, sub, |ui| {
+        let text = if mine { "Listening...".to_string() } else { hotkey_text(h) };
+        let b = egui::Button::new(RichText::new(text).strong().color(if mine { Color32::from_rgb(150, 160, 255) } else { TEXT }))
+            .fill(INPUT)
+            .stroke(Stroke::new(if mine { 2.0_f32 } else { 1.0_f32 }, if mine { ACCENT } else { BORDER }))
+            .rounding(8.0)
+            .min_size(vec2(220.0, 34.0));
+        if ui.add(b).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            if mine {
+                *listening = None;
+                win::notify(win::MSG_RESUME_KEYS);
+            } else {
+                if listening.is_none() {
+                    // Release the global hotkeys, otherwise the daemon would
+                    // swallow the combination before this window sees it.
+                    win::notify(win::MSG_PAUSE_KEYS);
+                }
+                *listening = Some(title.to_string());
+            }
+        }
+        if mine {
+            match capture_hotkey(ui.ctx()) {
+                Some(Captured::Keys(new)) => {
+                    *h = new;
+                    *changed = true;
+                    *listening = None;
+                    win::notify(win::MSG_RESUME_KEYS);
+                }
+                Some(Captured::Cancel) => {
+                    *listening = None;
+                    win::notify(win::MSG_RESUME_KEYS);
+                }
+                None => {}
+            }
+        }
     });
 }
 
@@ -782,8 +1011,19 @@ fn setup_style(ctx: &egui::Context) {
 }
 
 impl eframe::App for App {
+    /// Closing the window right after a change must not lose that change.
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if self.dirty_since.is_some() {
+            self.commit();
+        }
+        if self.listening.is_some() {
+            win::notify(win::MSG_RESUME_KEYS);
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll_external();
+        self.poll_update();
         let mut changed = false;
 
         egui::SidePanel::left("side")
@@ -793,6 +1033,7 @@ impl eframe::App for App {
             .show(ctx, |ui| self.sidebar(ui, &mut changed));
 
         egui::CentralPanel::default().frame(egui::Frame::none().fill(BG).inner_margin(egui::Margin::symmetric(26.0, 18.0))).show(ctx, |ui| {
+            self.update_banner(ui);
             if !self.daemon_running {
                 egui::Frame::none().fill(Color32::from_rgb(44, 34, 16)).stroke(Stroke::new(1.0_f32, Color32::from_rgb(110, 80, 30))).rounding(8.0).inner_margin(egui::Margin::symmetric(12.0, 6.0)).show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -818,6 +1059,13 @@ impl eframe::App for App {
 }
 
 pub fn run() {
+    // After an update the old settings window needs a moment to exit.
+    if let Some(ms) = arg("--delay").and_then(|s| s.parse::<u64>().ok()) {
+        std::thread::sleep(Duration::from_millis(ms.min(5000)));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        update::clean_up(&exe);
+    }
     if !win::single_instance(w!("Local\\XhCrosshairSettings")) {
         win::focus_settings();
         return;

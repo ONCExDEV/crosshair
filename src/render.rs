@@ -51,7 +51,21 @@ fn extent(p: &Profile, img: &Option<Pixmap>) -> f32 {
     if p.circle {
         e = e.max(p.circle_radius as f32 + p.circle_thick as f32 / 2.0 + o + 1.0);
     }
+    if p.square {
+        e = e.max(p.square_size as f32 / 2.0 + o + 1.0);
+    }
     e
+}
+
+/// A square frame (or a filled square) centered on `c`.
+fn square_rects(c: f32, side: u32, thick: u32, filled: bool) -> Vec<R> {
+    let s = side as f32;
+    let x0 = c - (side / 2) as f32;
+    let t = (thick.min(side / 2)) as f32;
+    if filled || t * 2.0 >= s {
+        return vec![(x0, x0, s, s)];
+    }
+    vec![(x0, x0, s, t), (x0, x0 + s - t, s, t), (x0, x0 + t, t, s - 2.0 * t), (x0 + s - t, x0 + t, t, s - 2.0 * t)]
 }
 
 fn paint(c: [u8; 4], aa: bool) -> Paint<'static> {
@@ -140,8 +154,9 @@ pub fn render(p: &Profile, hint: bool) -> Frame {
         } else {
             vec![]
         };
+        let square = if p.square { square_rects(c, p.square_size, p.square_thick, p.square_filled) } else { vec![] };
 
-        let circle = |pm: &mut Pixmap, r: f32, color: [u8; 4], width: Option<f32>| {
+        let circle =|pm: &mut Pixmap, r: f32, color: [u8; 4], width: Option<f32>| {
             let mut pb = PathBuilder::new();
             pb.push_circle(c, c, r);
             if let Some(path) = pb.finish() {
@@ -160,6 +175,7 @@ pub fn render(p: &Profile, hint: bool) -> Frame {
             let oc = p.outline_color;
             fill_rects(&mut layer, &cross, o, oc, cross_tf, cross_aa);
             fill_rects(&mut layer, &dot_sq, o, oc, id, false);
+            fill_rects(&mut layer, &square, o, oc, id, false);
             if p.dot && p.dot_round {
                 circle(&mut layer, p.dot_size as f32 / 2.0 + o, oc, None);
             }
@@ -169,6 +185,7 @@ pub fn render(p: &Profile, hint: bool) -> Frame {
         }
         fill_rects(&mut layer, &cross, 0.0, p.color, cross_tf, cross_aa);
         fill_rects(&mut layer, &dot_sq, 0.0, p.color, id, false);
+        fill_rects(&mut layer, &square, 0.0, p.color, id, false);
         if p.dot && p.dot_round {
             circle(&mut layer, p.dot_size as f32 / 2.0, p.color, None);
         }

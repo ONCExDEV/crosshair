@@ -100,6 +100,21 @@ impl App {
         let _ = self.cfg.save();
     }
 
+    /// Take the latest file from disk before saving a small change, so a
+    /// profile edit made in the settings window can never be overwritten
+    /// by a stale copy kept in memory here.
+    fn sync_from_disk(&mut self) {
+        self.cfg = Config::load();
+    }
+
+    fn pause_hotkeys(&self) {
+        unsafe {
+            for id in HK_TOGGLE..=HK_SETTINGS {
+                let _ = UnregisterHotKey(self.ctl, id);
+            }
+        }
+    }
+
     fn reload(&mut self) {
         self.cfg = Config::load();
         self.manual = None;
@@ -205,6 +220,7 @@ impl App {
         }
         unsafe {
             if save {
+                self.sync_from_disk();
                 let mut r = RECT::default();
                 if GetWindowRect(self.overlay, &mut r).is_ok() {
                     let (cx, cy) = ((r.left + r.right) / 2, (r.top + r.bottom) / 2);
@@ -259,6 +275,7 @@ impl App {
     }
 
     fn select_profile(&mut self, i: usize) {
+        self.sync_from_disk();
         if i < self.cfg.profiles.len() {
             self.cfg.active = i;
             self.manual = Some(i);
@@ -498,6 +515,18 @@ unsafe extern "system" fn ctl_proc(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRE
             open_settings();
             LRESULT(0)
         }
+        win::MSG_QUIT => {
+            let _ = DestroyWindow(h);
+            LRESULT(0)
+        }
+        win::MSG_PAUSE_KEYS => {
+            with_app(|a| a.pause_hotkeys());
+            LRESULT(0)
+        }
+        win::MSG_RESUME_KEYS => {
+            with_app(|a| a.register_hotkeys());
+            LRESULT(0)
+        }
         WM_DESTROY => {
             PostQuitMessage(0);
             LRESULT(0)
@@ -520,6 +549,9 @@ pub fn run() {
             return;
         }
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if let Ok(exe) = std::env::current_exe() {
+            xh::update::clean_up(&exe);
+        }
 
         let hinst: HINSTANCE = GetModuleHandleW(None).unwrap_or_default().into();
         let overlay_class = w!("XhOverlay");

@@ -15,6 +15,11 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 pub const MSG_RELOAD: u32 = WM_APP + 1;
 pub const MSG_DRAG: u32 = WM_APP + 2;
 pub const MSG_SETTINGS: u32 = WM_APP + 3;
+/// Release / re-register the global hotkeys while the settings window records a new one.
+pub const MSG_PAUSE_KEYS: u32 = WM_APP + 4;
+pub const MSG_RESUME_KEYS: u32 = WM_APP + 5;
+/// Ask the overlay to exit (used right before an update replaces the exe).
+pub const MSG_QUIT: u32 = WM_APP + 6;
 
 pub const CTL_CLASS: PCWSTR = w!("XhCtl");
 pub const SETTINGS_TITLE: PCWSTR = w!("Crosshair Settings");
