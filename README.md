@@ -11,7 +11,7 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 
 ![Release](https://img.shields.io/github/v/release/ONCExDEV/crosshair?style=flat-square&color=5B5BF0&label=version)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-3B82F6?style=flat-square)
-![Size](https://img.shields.io/badge/size-~2%20MB-8B5CF6?style=flat-square)
+![Size](https://img.shields.io/badge/size-~3%20MB-8B5CF6?style=flat-square)
 ![License](https://img.shields.io/github/license/ONCExDEV/crosshair?style=flat-square&color=4ADE80)
 
 <br>
