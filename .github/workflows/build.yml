@@ -21,21 +21,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Crosshair
-          path: |
-            target/release/crosshair.exe
-            target/release/crosshair-settings.exe
+          path: target/release/crosshair.exe
       - name: Package zip
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item target/release/crosshair.exe dist/
-          Copy-Item target/release/crosshair-settings.exe dist/
           @(
             'Crosshair'
             ''
             'Double-click crosshair.exe to start. No installation needed.'
-            'Keep crosshair.exe and crosshair-settings.exe in the same folder.'
             'Double-click the tray icon to open the settings.'
             ''
             'If Windows shows "Windows protected your PC": click More info -> Run anyway.'
@@ -50,6 +46,5 @@ jobs:
         with:
           files: |
             target/release/crosshair.exe
-            target/release/crosshair-settings.exe
             Crosshair-windows.zip
           generate_release_notes: true

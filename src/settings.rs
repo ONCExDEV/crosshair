@@ -1,7 +1,6 @@
 //! Settings window. Runs only while open, so its RAM is released on close.
 //! Changes are saved to config.toml and the daemon is pinged to reload.
 
-#![windows_subsystem = "windows"]
 
 use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
@@ -77,7 +76,7 @@ fn from32(c: Color32) -> [u8; 4] {
 }
 
 fn daemon_exe() -> std::path::PathBuf {
-    std::env::current_exe().map(|p| p.with_file_name("crosshair.exe")).unwrap_or_else(|_| "crosshair.exe".into())
+    std::env::current_exe().unwrap_or_else(|_| "crosshair.exe".into())
 }
 
 fn arg(name: &str) -> Option<String> {
@@ -92,7 +91,7 @@ fn arg(name: &str) -> Option<String> {
 
 impl App {
     fn new(ctx: &egui::Context) -> Self {
-        let logo = tiny_skia::Pixmap::decode_png(include_bytes!("../../docs/logo.png")).expect("logo");
+        let logo = tiny_skia::Pixmap::decode_png(include_bytes!("../docs/logo.png")).expect("logo");
         let img = egui::ColorImage::from_rgba_premultiplied([logo.width() as usize, logo.height() as usize], logo.data());
         let mut app = Self {
             cfg: Config::load(),
@@ -818,10 +817,10 @@ impl eframe::App for App {
     }
 }
 
-fn main() -> eframe::Result {
+pub fn run() {
     if !win::single_instance(w!("Local\\XhCrosshairSettings")) {
         win::focus_settings();
-        return Ok(());
+        return;
     }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -834,12 +833,12 @@ fn main() -> eframe::Result {
         stencil_buffer: 0,
         ..Default::default()
     };
-    eframe::run_native(
+    let _ = eframe::run_native(
         "Crosshair Settings",
         options,
         Box::new(|cc| {
             setup_style(&cc.egui_ctx);
             Ok(Box::new(App::new(&cc.egui_ctx)))
         }),
-    )
+    );
 }

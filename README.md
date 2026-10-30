@@ -7,11 +7,11 @@
 **A crosshair overlay that stays out of your way.**<br>
 Tiny, native and free. Pick any shape, put it exactly where you want it, and switch profile per game.
 
-[![Download](https://img.shields.io/badge/Download-Crosshair--windows.zip-5B5BF0?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ONCExDEV/crosshair/releases/latest/download/Crosshair-windows.zip)
+[![Download](https://img.shields.io/badge/Download-crosshair.exe-5B5BF0?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/ONCExDEV/crosshair/releases/latest/download/crosshair.exe)
 
 ![Release](https://img.shields.io/github/v/release/ONCExDEV/crosshair?style=flat-square&color=5B5BF0&label=version)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-3B82F6?style=flat-square)
-![Size](https://img.shields.io/badge/size-~3%20MB-8B5CF6?style=flat-square)
+![Size](https://img.shields.io/badge/size-~4%20MB-8B5CF6?style=flat-square)
 ![License](https://img.shields.io/github/license/ONCExDEV/crosshair?style=flat-square&color=4ADE80)
 
 <br>
@@ -29,7 +29,7 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 - ⌨️ **Global hotkeys.** Show or hide, next profile, move mode and settings, from anywhere. You can change all of them.
 - 🔗 **Share profiles.** Copy a short code, send it to a friend, and they import it in one click.
 - 🛡️ **No injection.** It only draws its own transparent window. No hooks into games, no memory reading, no screen capture. See [Is it safe?](#is-it-safe)
-- 🪶 **Tiny and light.** The overlay uses about 1.5 MB of RAM and 0% CPU while idle. The settings window only runs while it is open.
+- 🪶 **Tiny and light.** The overlay uses about 2 MB of RAM and 0% CPU while idle. The settings window only runs while it is open, and its memory is freed when you close it.
 
 ## Screenshots
 
@@ -48,12 +48,12 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 
 ## Download
 
-1. **[Download `Crosshair-windows.zip`](https://github.com/ONCExDEV/crosshair/releases/latest/download/Crosshair-windows.zip)** from the [Releases](../../releases/latest) page.
-2. Unzip it anywhere and double-click **`crosshair.exe`**. You don't need to install anything.
+1. **[Download `crosshair.exe`](https://github.com/ONCExDEV/crosshair/releases/latest/download/crosshair.exe)**. You can also get `Crosshair-windows.zip` from the [Releases](../../releases/latest) page.
+2. Put it anywhere you like and double-click it. You don't need to install anything.
 3. A tray icon appears and the crosshair shows in the middle of your screen. Double-click the tray icon to open the settings.
 
 > [!NOTE]
-> Keep `crosshair.exe` and `crosshair-settings.exe` in the same folder. The green **Code → Download ZIP** button only contains the source code, not the app.
+> The green **Code → Download ZIP** button only contains the source code, not the app.
 
 > [!TIP]
 > **"Windows protected your PC"?** The app isn't signed with a paid certificate, so SmartScreen may warn the first time. Click **More info → Run anyway**. You only need to do this once.
@@ -100,13 +100,13 @@ The app is built to look like a normal desktop program to any game and anti-chea
 Your profiles are stored in `%APPDATA%\Crosshair\config.toml`. You can open the folder from **Settings → General → Config folder**. To remove the app:
 1. Turn off **Start with Windows**, if you turned it on.
 2. Exit the app from the tray.
-3. Delete the two `.exe` files and the settings folder.
+3. Delete the `.exe` and the settings folder.
 
 <details>
 <summary><b>How it works</b></summary>
 
 - The crosshair is drawn once into a small bitmap and shown in a layered, click-through, topmost window with per-pixel alpha. There is no render loop, so the app sleeps until something happens.
-- The overlay (`crosshair.exe`) and the settings window (`crosshair-settings.exe`) are separate programs. The heavy UI only exists in memory while you have it open, and it talks to the overlay through the config file and a window message.
+- It is a single exe. Opening the settings starts the same exe again with `--settings` as a separate process, so the heavy UI only exists in memory while it is open. It talks to the overlay through the config file and a window message.
 - The settings UI is drawn with [egui](https://github.com/emilk/egui). The overlay itself uses only the Win32 API and a small software renderer ([tiny-skia](https://github.com/RazrFalcon/tiny-skia)).
 - Game detection uses a process snapshot (`CreateToolhelp32Snapshot`) to map the foreground window to a program name. It never opens the game process.
 
@@ -121,7 +121,7 @@ Only needed if you want to change the code. Install [Rust](https://rustup.rs) an
 cargo build --release
 ```
 
-The output is `target\release\crosshair.exe` and `target\release\crosshair-settings.exe`. Pushing a tag such as `v1.0.0` makes GitHub Actions build both and publish them as a release.
+The output is `target\release\crosshair.exe`. Pushing a tag such as `v1.1.0` makes GitHub Actions build the exe and the zip and publish them as a release.
 
 </details>
 

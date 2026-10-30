@@ -1,7 +1,6 @@
 //! Background process: transparent click-through overlay, tray icon, hotkeys.
 //! Event driven. It sleeps in GetMessage and uses no CPU while idle.
 
-#![windows_subsystem = "windows"]
 
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -368,7 +367,7 @@ fn open_settings() {
         }
     }
     if let Ok(exe) = std::env::current_exe() {
-        let _ = std::process::Command::new(exe.with_file_name("crosshair-settings.exe")).spawn();
+        let _ = std::process::Command::new(exe).arg("--settings").spawn();
     }
 }
 
@@ -514,7 +513,7 @@ unsafe extern "system" fn ctl_proc(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRE
     }
 }
 
-fn main() {
+pub fn run() {
     unsafe {
         if !win::single_instance(w!("Local\\XhCrosshairDaemon")) {
             win::notify(win::MSG_SETTINGS);

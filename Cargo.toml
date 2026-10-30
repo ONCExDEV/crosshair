@@ -1,6 +1,6 @@
 [package]
 name = "crosshair"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Tiny, injection-free crosshair overlay for Windows"
 license = "MIT"
@@ -12,11 +12,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "crosshair"
-path = "src/bin/daemon.rs"
-
-[[bin]]
-name = "crosshair-settings"
-path = "src/bin/settings.rs"
+path = "src/main.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
