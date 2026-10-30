@@ -98,6 +98,13 @@ The app is built to look like a normal desktop program to any game and anti-chea
 
 ## Updating
 
+<div align="center">
+<img src="docs/update.png" width="640" alt="The Update button in the settings"><br>
+<sub><b>The banner only appears when a newer version exists</b></sub>
+</div>
+
+<br>
+
 When you open the settings, the app asks GitHub once whether a newer release exists. If there is one, an **Update** button appears at the top. Nothing is downloaded before you press it. Then the app downloads the new version, checks it (size, file header and GitHub's SHA-256 checksum), replaces itself in the same place and restarts. Your profiles, shortcut and Start with Windows setting stay as they are. If anything goes wrong, the old version is kept.
 
 Only the settings window uses the network, and only for this. The overlay itself never connects to anything.

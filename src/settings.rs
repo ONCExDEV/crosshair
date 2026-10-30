@@ -822,10 +822,13 @@ fn info_banner(ui: &mut Ui, text: &str, error: bool, add: impl FnOnce(&mut Ui)) 
         (Color32::from_rgb(26, 28, 56), ACCENT, Color32::from_rgb(190, 192, 255))
     };
     egui::Frame::none().fill(fill).stroke(Stroke::new(1.0_f32, stroke)).rounding(8.0).inner_margin(egui::Margin::symmetric(12.0, 6.0)).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.set_width(ui.available_width());
-            ui.add(egui::Label::new(RichText::new(text).color(color)).wrap());
-            ui.with_layout(Layout::right_to_left(Align::Center), add);
+        // The button goes first (right side) so the text wraps in what is left.
+        let size = vec2(ui.available_width(), 40.0);
+        ui.allocate_ui_with_layout(size, Layout::right_to_left(Align::Center), |ui| {
+            add(ui);
+            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                ui.add(egui::Label::new(RichText::new(text).color(color)).wrap());
+            });
         });
     });
 }
