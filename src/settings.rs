@@ -663,6 +663,7 @@ impl App {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             caption(ui, "Behavior");
             card(ui, |ui| {
+                row(ui, "Show crosshair", "Turn the overlay on or off. Remembered after a restart.", |ui| *changed |= toggle(ui, &mut self.cfg.enabled));
                 row(ui, "Start with Windows", "Launches quietly in the tray", |ui| {
                     if toggle(ui, &mut self.autostart) {
                         win::set_autostart(self.autostart, &daemon_exe());

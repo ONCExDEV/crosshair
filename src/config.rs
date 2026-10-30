@@ -206,6 +206,8 @@ impl Default for Hotkeys {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct Config {
+    /// Whether the crosshair is shown. Remembered across restarts.
+    pub enabled: bool,
     pub active: usize,
     /// Switch profile automatically when a listed game is in the foreground.
     pub auto_switch: bool,
@@ -220,6 +222,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            enabled: true,
             active: 0,
             auto_switch: true,
             hide_outside_games: false,

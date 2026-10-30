@@ -42,7 +42,6 @@ static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
 
 struct App {
     cfg: Config,
-    enabled: bool,
     drag: bool,
     /// Profile matched by the foreground game, if any.
     game: Option<usize>,
@@ -69,7 +68,16 @@ impl App {
     }
 
     fn visible(&self) -> bool {
-        self.drag || (self.enabled && (!self.cfg.hide_outside_games || self.game.is_some()))
+        self.drag || (self.cfg.enabled && (!self.cfg.hide_outside_games || self.game.is_some()))
+    }
+
+    /// Show or hide the crosshair and remember the choice for the next start.
+    fn toggle_enabled(&mut self) {
+        let was = self.cfg.enabled;
+        self.sync_from_disk();
+        self.cfg.enabled = !was;
+        self.save();
+        self.refresh();
     }
 
     fn refresh(&mut self) {
@@ -390,7 +398,7 @@ fn open_settings() {
 
 unsafe fn show_menu(hwnd: HWND) {
     let Some((names, shown, enabled)) =
-        with_app(|a| (a.cfg.profiles.iter().map(|p| p.name.clone()).collect::<Vec<_>>(), a.displayed(), a.enabled))
+        with_app(|a| (a.cfg.profiles.iter().map(|p| p.name.clone()).collect::<Vec<_>>(), a.displayed(), a.cfg.enabled))
     else {
         return;
     };
@@ -425,10 +433,7 @@ unsafe fn show_menu(hwnd: HWND) {
     match cmd {
         0 => {}
         ID_TOGGLE => {
-            with_app(|a| {
-                a.enabled = !a.enabled;
-                a.refresh();
-            });
+            with_app(|a| a.toggle_enabled());
         }
         ID_DRAG => {
             with_app(|a| if a.drag { a.exit_drag(true) } else { a.enter_drag() });
@@ -451,10 +456,7 @@ unsafe fn show_menu(hwnd: HWND) {
 
 fn on_hotkey(id: i32) {
     with_app(|a| match id {
-        HK_TOGGLE => {
-            a.enabled = !a.enabled;
-            a.refresh();
-        }
+        HK_TOGGLE => a.toggle_enabled(),
         HK_NEXT => {
             let n = a.cfg.profiles.len();
             let next = (a.displayed() + 1) % n;
@@ -493,10 +495,7 @@ unsafe extern "system" fn ctl_proc(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRE
             match (l.0 as u32) & 0xFFFF {
                 WM_RBUTTONUP => show_menu(h),
                 WM_LBUTTONUP => {
-                    with_app(|a| {
-                        a.enabled = !a.enabled;
-                        a.refresh();
-                    });
+                    with_app(|a| a.toggle_enabled());
                 }
                 WM_LBUTTONDBLCLK => open_settings(),
                 _ => {}
@@ -602,7 +601,6 @@ pub fn run() {
         APP.with(|a| {
             *a.borrow_mut() = Some(App {
                 cfg: Config::load(),
-                enabled: true,
                 drag: false,
                 game: None,
                 manual: None,
