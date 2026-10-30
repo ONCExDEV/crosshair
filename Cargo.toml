@@ -1,0 +1,54 @@
+[package]
+name = "crosshair"
+version = "1.0.0"
+edition = "2021"
+description = "Tiny, injection-free crosshair overlay for Windows"
+license = "MIT"
+build = "build.rs"
+
+[lib]
+name = "xh"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crosshair"
+path = "src/bin/daemon.rs"
+
+[[bin]]
+name = "crosshair-settings"
+path = "src/bin/settings.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+base64 = "0.22"
+tiny-skia = "0.11"
+eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
+rfd = { version = "0.15", default-features = false }
+
+[build-dependencies]
+winresource = "0.1"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
