@@ -12,6 +12,9 @@ pub struct Profile {
     pub cross_gap: u32,
     pub t_style: bool,
     pub rotation: f32,
+    /// Use a different length for the vertical lines.
+    pub cross_split: bool,
+    pub cross_len_v: u32,
 
     pub dot: bool,
     pub dot_size: u32,
@@ -26,6 +29,26 @@ pub struct Profile {
     pub square_size: u32,
     pub square_thick: u32,
     pub square_filled: bool,
+    /// 45 turns the square into a diamond.
+    pub square_rotation: f32,
+
+    /// Four rounded corner brackets around the center.
+    pub brackets: bool,
+    /// Side length of the area the brackets frame.
+    pub brackets_size: u32,
+    /// Length of each bracket arm.
+    pub brackets_arm: u32,
+    pub brackets_thick: u32,
+    pub brackets_radius: u32,
+    pub brackets_rotation: f32,
+
+    /// A "^" below the center.
+    pub chevron: bool,
+    pub chevron_size: u32,
+    pub chevron_thick: u32,
+    pub chevron_offset: u32,
+    /// Put it above the center as a "v".
+    pub chevron_flip: bool,
 
     pub use_image: bool,
     pub image_path: String,
@@ -57,6 +80,8 @@ impl Default for Profile {
             cross_gap: 4,
             t_style: false,
             rotation: 0.0,
+            cross_split: false,
+            cross_len_v: 6,
             dot: false,
             dot_size: 2,
             dot_round: false,
@@ -67,6 +92,18 @@ impl Default for Profile {
             square_size: 16,
             square_thick: 2,
             square_filled: false,
+            square_rotation: 0.0,
+            brackets: false,
+            brackets_size: 28,
+            brackets_arm: 9,
+            brackets_thick: 2,
+            brackets_radius: 6,
+            brackets_rotation: 0.0,
+            chevron: false,
+            chevron_size: 9,
+            chevron_thick: 2,
+            chevron_offset: 10,
+            chevron_flip: false,
             use_image: false,
             image_path: String::new(),
             image_scale: 1.0,
@@ -93,6 +130,16 @@ impl Profile {
         self.circle_thick = self.circle_thick.clamp(1, 40);
         self.square_size = self.square_size.clamp(2, 200);
         self.square_thick = self.square_thick.clamp(1, 40);
+        self.square_rotation = self.square_rotation.clamp(-180.0, 180.0);
+        self.cross_len_v = self.cross_len_v.min(200);
+        self.brackets_size = self.brackets_size.clamp(4, 300);
+        self.brackets_arm = self.brackets_arm.clamp(1, 150);
+        self.brackets_thick = self.brackets_thick.clamp(1, 20);
+        self.brackets_radius = self.brackets_radius.min(60);
+        self.brackets_rotation = self.brackets_rotation.clamp(-180.0, 180.0);
+        self.chevron_size = self.chevron_size.clamp(2, 60);
+        self.chevron_thick = self.chevron_thick.clamp(1, 20);
+        self.chevron_offset = self.chevron_offset.min(200);
         self.outline_thick = self.outline_thick.min(10);
         self.opacity = self.opacity.clamp(0.05, 1.0);
         self.image_scale = self.image_scale.clamp(0.1, 8.0);
@@ -104,62 +151,91 @@ impl Profile {
 }
 
 pub fn presets() -> Vec<Profile> {
-    let base = Profile::default();
+    let b = Profile::default();
+    let white = [255, 255, 255, 255];
     vec![
-        Profile { name: "Classic".into(), ..base.clone() },
+        Profile { name: "Classic".into(), ..b.clone() },
+        Profile { name: "Dot".into(), cross: false, dot: true, dot_size: 4, dot_round: true, ..b.clone() },
+        Profile { name: "Tiny cross".into(), cross_len: 3, cross_thick: 1, cross_gap: 2, color: white, ..b.clone() },
+        Profile { name: "T-style".into(), t_style: true, cross_len: 8, cross_gap: 3, color: [0, 229, 255, 255], ..b.clone() },
+        Profile { name: "Ring".into(), cross: false, dot: true, dot_size: 2, circle: true, circle_radius: 14, color: [255, 214, 0, 255], ..b.clone() },
+        Profile { name: "Square".into(), cross: false, dot: true, dot_size: 2, square: true, square_size: 14, color: [255, 64, 64, 255], ..b.clone() },
+        Profile { name: "X cross".into(), rotation: 45.0, cross_len: 7, cross_gap: 3, color: [255, 64, 64, 255], ..b.clone() },
         Profile {
-            name: "Dot".into(),
+            name: "Brackets".into(),
             cross: false,
             dot: true,
-            dot_size: 4,
-            dot_round: true,
-            ..base.clone()
+            dot_size: 3,
+            brackets: true,
+            brackets_size: 30,
+            brackets_arm: 9,
+            brackets_radius: 7,
+            color: white,
+            ..b.clone()
         },
         Profile {
-            name: "Tiny cross".into(),
-            cross_len: 3,
-            cross_thick: 1,
-            cross_gap: 2,
-            color: [255, 255, 255, 255],
-            ..base.clone()
-        },
-        Profile {
-            name: "T-style".into(),
-            t_style: true,
-            cross_len: 8,
-            cross_gap: 3,
-            color: [0, 229, 255, 255],
-            ..base.clone()
-        },
-        Profile {
-            name: "Ring".into(),
+            name: "Frame".into(),
             cross: false,
             dot: true,
             dot_size: 2,
-            circle: true,
-            circle_radius: 14,
-            color: [255, 214, 0, 255],
-            ..base.clone()
+            dot_round: true,
+            brackets: true,
+            brackets_size: 44,
+            brackets_arm: 12,
+            brackets_thick: 3,
+            brackets_radius: 0,
+            color: [0, 255, 102, 255],
+            ..b.clone()
         },
+        Profile { name: "Plus".into(), cross_len: 10, cross_thick: 1, cross_gap: 0, color: white, ..b.clone() },
+        Profile { name: "Precision".into(), cross_len: 20, cross_thick: 1, cross_gap: 8, dot: true, dot_size: 2, color: [255, 64, 64, 255], ..b.clone() },
+        Profile { name: "Thick cross".into(), cross_len: 12, cross_thick: 4, cross_gap: 5, color: white, ..b.clone() },
+        Profile { name: "Tall cross".into(), cross_split: true, cross_len: 4, cross_len_v: 10, cross_gap: 3, color: [0, 229, 255, 255], ..b.clone() },
+        Profile { name: "Hollow ring".into(), cross: false, circle: true, circle_radius: 8, circle_thick: 2, color: white, ..b.clone() },
+        Profile { name: "Big circle".into(), cross: false, dot: true, dot_size: 2, circle: true, circle_radius: 26, circle_thick: 1, color: [0, 255, 102, 255], ..b.clone() },
         Profile {
-            name: "Square".into(),
+            name: "Diamond".into(),
             cross: false,
             dot: true,
             dot_size: 2,
             square: true,
-            square_size: 14,
-            color: [255, 64, 64, 255],
-            ..base.clone()
+            square_size: 16,
+            square_rotation: 45.0,
+            color: [255, 0, 200, 255],
+            ..b.clone()
+        },
+        Profile { name: "Pixel".into(), cross: false, square: true, square_size: 4, square_filled: true, color: white, ..b.clone() },
+        Profile {
+            name: "Chevron".into(),
+            cross: false,
+            dot: true,
+            dot_size: 2,
+            chevron: true,
+            chevron_size: 8,
+            chevron_offset: 8,
+            color: [255, 214, 0, 255],
+            ..b.clone()
         },
         Profile {
-            name: "X cross".into(),
-            rotation: 45.0,
-            cross_len: 7,
-            cross_gap: 3,
-            color: [255, 64, 64, 255],
-            ..base
+            name: "Sniper".into(),
+            cross_len: 40,
+            cross_thick: 1,
+            cross_gap: 6,
+            dot: true,
+            dot_size: 2,
+            circle: true,
+            circle_radius: 60,
+            circle_thick: 1,
+            color: [255, 64, 64, 200],
+            ..b
         },
     ]
+}
+/// The few profiles a fresh install starts with. The rest are in the
+/// "new profile" menu.
+pub fn default_profiles() -> Vec<Profile> {
+    const NAMES: [&str; 5] = ["Classic", "Dot", "Brackets", "T-style", "Ring"];
+    presets().into_iter().filter(|p| NAMES.contains(&p.name.as_str())).collect()
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -215,6 +291,9 @@ pub struct Config {
     pub hide_outside_games: bool,
     /// Re-assert "always on top" when the foreground window changes.
     pub keep_on_top: bool,
+    /// Open the settings window when the exe is started by hand.
+    /// Starting with Windows always stays in the tray.
+    pub open_settings_on_start: bool,
     pub hotkeys: Hotkeys,
     pub profiles: Vec<Profile>,
 }
@@ -227,8 +306,9 @@ impl Default for Config {
             auto_switch: true,
             hide_outside_games: false,
             keep_on_top: true,
+            open_settings_on_start: true,
             hotkeys: Hotkeys::default(),
-            profiles: presets(),
+            profiles: default_profiles(),
         }
     }
 }
@@ -259,7 +339,7 @@ impl Config {
 
     pub fn sanitize(&mut self) {
         if self.profiles.is_empty() {
-            self.profiles = presets();
+            self.profiles = default_profiles();
         }
         for p in &mut self.profiles {
             p.sanitize();

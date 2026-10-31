@@ -206,7 +206,8 @@ pub fn set_autostart(on: bool, exe: &Path) {
             return;
         }
         if on {
-            let val = wide(&format!("\"{}\"", exe.display()));
+            // --background keeps the start with Windows quiet: tray only.
+            let val = wide(&format!("\"{}\" --background", exe.display()));
             let bytes = std::slice::from_raw_parts(val.as_ptr() as *const u8, val.len() * 2);
             let _ = RegSetValueExW(key, RUN_VALUE, 0, REG_SZ, Some(bytes));
         } else {

@@ -270,7 +270,7 @@ pub fn restart(exe: &Path) -> ! {
         }
         std::thread::sleep(Duration::from_millis(400));
     }
-    let _ = std::process::Command::new(exe).spawn();
+    let _ = std::process::Command::new(exe).arg("--background").spawn();
     let _ = std::process::Command::new(exe).args(["--settings", "--delay", "1500"]).spawn();
     std::process::exit(0);
 }

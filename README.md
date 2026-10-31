@@ -22,7 +22,8 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 
 ## Features
 
-- 🎯 **Any shape you want.** Cross, T-style, X, dot, ring, square, or your own PNG. Combine them in one profile. Length, thickness, gap, rotation, color, opacity and outline are all adjustable.
+- 🎯 **Any shape you want.** Cross, T-style, X, dot, ring, square, diamond, rounded corner brackets, chevron, or your own PNG. Combine them in one profile. Length, thickness, gap, rotation, corner radius, color, opacity and outline are all adjustable.
+- 🗂️ **20 ready-made crosshairs.** Press **+** next to PROFILES and start from a preset, a blank profile or a share code. Right-click a profile to rename, duplicate, reorder, copy its code or delete it.
 - 📐 **Pixel-perfect center.** The crosshair sits on the exact middle of your screen. Odd and even thicknesses are both drawn symmetrically.
 - 🖱️ **Place it anywhere.** Drag it with the mouse or nudge it with the arrow keys (Shift = 10 px). Works on every monitor.
 - 🎮 **Profile per game.** List the programs that belong to a profile and it switches automatically when you tab in. You can also show the crosshair only in those games.
@@ -38,7 +39,7 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 <table>
 <tr>
 <td align="center"><img src="docs/color.png" width="360" alt="Color and outline"><br><sub><b>Color and outline</b></sub></td>
-<td align="center"><img src="docs/position.png" width="360" alt="Position"><br><sub><b>Position and monitor</b></sub></td>
+<td align="center"><img src="docs/profiles.png" width="360" alt="Profile menu"><br><sub><b>Right-click a profile</b></sub></td>
 </tr>
 <tr>
 <td align="center"><img src="docs/general.png" width="360" alt="Settings"><br><sub><b>Hotkeys and behavior</b></sub></td>
@@ -51,7 +52,9 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 
 1. **[Download `crosshair.exe`](https://github.com/ONCExDEV/crosshair/releases/latest/download/crosshair.exe)**. You can also get `Crosshair-windows.zip` from the [Releases](../../releases/latest) page.
 2. Put it anywhere you like and double-click it. You don't need to install anything.
-3. A tray icon appears and the crosshair shows in the middle of your screen. Double-click the tray icon to open the settings.
+3. The crosshair shows in the middle of your screen and the settings open next to it. A tray icon stays behind when you close the settings. Double-click it to open them again.
+
+Don't want the settings to open every time? Turn off **Open settings when I start the app** under **Settings → Behavior**. Starting with Windows always stays quietly in the tray.
 
 > [!NOTE]
 > The green **Code → Download ZIP** button only contains the source code, not the app.
@@ -65,7 +68,7 @@ Tiny, native and free. Pick any shape, put it exactly where you want it, and swi
 
 | | |
 |---|---|
-| **Open settings** | Double-click the tray icon, or press `Ctrl + Alt + F4`. |
+| **Open settings** | Double-click the tray icon, start the exe again, or press `Ctrl + Alt + F4`. |
 | **Show / hide** | Left-click the tray icon, or press `Ctrl + Alt + F1`. |
 | **Next profile** | Press `Ctrl + Alt + F2`. |
 | **Move the crosshair** | Press `Ctrl + Alt + F3`, drag the box or use the arrow keys, then press `Enter` to save or `Esc` to cancel. |

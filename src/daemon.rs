@@ -620,6 +620,19 @@ pub fn run() {
             a.refresh();
         });
 
+        // Started by hand (double-click, shortcut): show the settings too, if
+        // the user wants that. Start with Windows passes --background.
+        let background = std::env::args().any(|a| a == "--background");
+        if !background && with_app(|a| a.cfg.open_settings_on_start).unwrap_or(false) {
+            open_settings();
+        }
+        // Older versions registered the startup entry without --background.
+        if win::autostart_enabled() {
+            if let Ok(exe) = std::env::current_exe() {
+                win::set_autostart(true, &exe);
+            }
+        }
+
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&msg);

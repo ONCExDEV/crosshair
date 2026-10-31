@@ -58,6 +58,18 @@ enum UpdMsg {
     Installed(Result<(), String>),
 }
 
+/// What the right-click menu of a profile can do.
+#[derive(Clone, Copy)]
+enum Act {
+    Use,
+    Rename,
+    Duplicate,
+    Copy,
+    Up,
+    Down,
+    Delete,
+}
+
 struct App {
     cfg: Config,
     sel: usize,
@@ -82,6 +94,9 @@ struct App {
     mons: Vec<win::MonitorInfo>,
     /// Title of the hotkey row that is waiting for a key press.
     listening: Option<String>,
+    /// Put the cursor in the profile name field on the next frame.
+    focus_name: bool,
+    toast: Option<(String, Instant)>,
 
     upd: Upd,
     upd_rx: Option<mpsc::Receiver<UpdMsg>>,
@@ -135,6 +150,8 @@ impl App {
             status: String::new(),
             mons: win::monitors(),
             listening: None,
+            focus_name: false,
+            toast: None,
             upd: Upd::Idle,
             upd_rx: None,
             upd_progress: Arc::new(AtomicU64::new(0)),
@@ -327,61 +344,163 @@ impl App {
         resp
     }
 
+    fn add_profile(&mut self, p: Profile, changed: &mut bool) {
+        self.cfg.profiles.push(p);
+        self.sel = self.cfg.profiles.len() - 1;
+        self.page = Page::Profile;
+        self.tab = Tab::Shape;
+        *changed = true;
+    }
+
+    fn apply_action(&mut self, i: usize, act: Act, ctx: &egui::Context, changed: &mut bool) {
+        let n = self.cfg.profiles.len();
+        match act {
+            Act::Use => {
+                self.cfg.active = i;
+                *changed = true;
+            }
+            Act::Rename => {
+                self.sel = i;
+                self.page = Page::Profile;
+                self.focus_name = true;
+            }
+            Act::Duplicate => {
+                let mut p = self.cfg.profiles[i].clone();
+                p.name = format!("{} copy", p.name);
+                p.games.clear();
+                self.cfg.profiles.insert(i + 1, p);
+                if self.cfg.active > i {
+                    self.cfg.active += 1;
+                }
+                self.sel = i + 1;
+                self.page = Page::Profile;
+                *changed = true;
+            }
+            Act::Copy => {
+                ctx.copy_text(config::export_code(&self.cfg.profiles[i]));
+                self.toast = Some(("Share code copied".into(), Instant::now()));
+            }
+            Act::Up | Act::Down => {
+                let j = if matches!(act, Act::Up) { i.checked_sub(1) } else { (i + 1 < n).then_some(i + 1) };
+                if let Some(j) = j {
+                    self.cfg.profiles.swap(i, j);
+                    let fix = |x: usize| if x == i { j } else if x == j { i } else { x };
+                    self.cfg.active = fix(self.cfg.active);
+                    self.sel = fix(self.sel);
+                    *changed = true;
+                }
+            }
+            Act::Delete => {
+                if n > 1 {
+                    self.cfg.profiles.remove(i);
+                    let last = self.cfg.profiles.len() - 1;
+                    let fix = |x: usize| if x > i { x - 1 } else { x.min(last) };
+                    self.cfg.active = fix(self.cfg.active);
+                    self.sel = fix(self.sel);
+                    *changed = true;
+                }
+            }
+        }
+    }
+
     fn sidebar(&mut self, ui: &mut Ui, changed: &mut bool) {
         ui.horizontal(|ui| {
             ui.add(egui::Image::new(&self.logo).fit_to_exact_size(vec2(28.0, 28.0)));
             ui.label(RichText::new("Crosshair").size(18.0).strong().color(TEXT));
         });
-        caption(ui, "Profiles");
+        ui.add_space(16.0);
 
+        // PROFILES  [+]
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("PROFILES").size(11.5).strong().color(MUTED));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let plus = egui::Button::new(RichText::new("+").size(17.0).color(TEXT))
+                    .fill(Color32::from_rgb(34, 34, 42))
+                    .stroke(Stroke::NONE)
+                    .rounding(7.0)
+                    .min_size(vec2(28.0, 24.0));
+                let resp = egui::menu::menu_custom_button(ui, plus, |ui| {
+                    ui.set_min_width(190.0);
+                    if ui.button("Blank profile").clicked() {
+                        self.add_profile(Profile::default(), changed);
+                        ui.close_menu();
+                    }
+                    if ui.button("Import from a code").clicked() {
+                        self.page = Page::Profile;
+                        self.tab = Tab::Share;
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    ui.label(RichText::new("Start from a preset").size(12.5).color(MUTED));
+                    egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                        for p in config::presets() {
+                            if ui.button(&p.name).clicked() {
+                                self.add_profile(p, changed);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                });
+                resp.response.on_hover_text("New profile");
+            });
+        });
+        ui.add_space(4.0);
+
+        let mut action: Option<(usize, Act)> = None;
         let n = self.cfg.profiles.len();
         for i in 0..n {
             let name = self.cfg.profiles[i].name.clone();
             let selected = self.page == Page::Profile && self.sel == i;
             let r = Self::nav_row(ui, &name, selected, self.cfg.active == i);
-            if r.clicked() {
+            if r.clicked() || r.secondary_clicked() {
                 self.sel = i;
                 self.page = Page::Profile;
             }
+            if r.double_clicked() {
+                action = Some((i, Act::Rename));
+            }
+            r.context_menu(|ui| {
+                ui.set_min_width(170.0);
+                let mut pick = |a: Act, ui: &mut Ui| {
+                    action = Some((i, a));
+                    ui.close_menu();
+                };
+                if ui.button("Use this profile").clicked() {
+                    pick(Act::Use, ui);
+                }
+                if ui.button("Rename").clicked() {
+                    pick(Act::Rename, ui);
+                }
+                if ui.button("Duplicate").clicked() {
+                    pick(Act::Duplicate, ui);
+                }
+                if ui.button("Copy share code").clicked() {
+                    pick(Act::Copy, ui);
+                }
+                ui.separator();
+                if ui.add_enabled(i > 0, egui::Button::new("Move up")).clicked() {
+                    pick(Act::Up, ui);
+                }
+                if ui.add_enabled(i + 1 < n, egui::Button::new("Move down")).clicked() {
+                    pick(Act::Down, ui);
+                }
+                ui.separator();
+                ui.add_enabled_ui(n > 1, |ui| {
+                    ui.menu_button(RichText::new("Delete").color(Color32::from_rgb(255, 140, 140)), |ui| {
+                        if ui.button("Yes, delete it").clicked() {
+                            pick(Act::Delete, ui);
+                        }
+                    });
+                });
+            });
+        }
+        if let Some((i, a)) = action {
+            let ctx = ui.ctx().clone();
+            self.apply_action(i, a, &ctx, changed);
         }
 
-        ui.add_space(6.0);
-        ui.menu_button(RichText::new("+  New profile").color(TEXT), |ui| {
-            if ui.button("Blank").clicked() {
-                self.cfg.profiles.push(Profile::default());
-                self.sel = self.cfg.profiles.len() - 1;
-                self.page = Page::Profile;
-                *changed = true;
-                ui.close_menu();
-            }
-            ui.separator();
-            for p in config::presets() {
-                if ui.button(&p.name).clicked() {
-                    self.cfg.profiles.push(p);
-                    self.sel = self.cfg.profiles.len() - 1;
-                    self.page = Page::Profile;
-                    *changed = true;
-                    ui.close_menu();
-                }
-            }
-        });
-        ui.horizontal(|ui| {
-            if ui.button("Duplicate").clicked() {
-                let mut p = self.cfg.profiles[self.sel].clone();
-                p.name = format!("{} copy", p.name);
-                p.games.clear();
-                self.cfg.profiles.push(p);
-                self.sel = self.cfg.profiles.len() - 1;
-                self.page = Page::Profile;
-                *changed = true;
-            }
-            if ui.add_enabled(n > 1, egui::Button::new("Delete")).clicked() {
-                self.cfg.profiles.remove(self.sel);
-                self.sel = self.sel.min(self.cfg.profiles.len() - 1);
-                self.cfg.active = self.cfg.active.min(self.cfg.profiles.len() - 1);
-                *changed = true;
-            }
-        });
+        ui.add_space(8.0);
+        ui.label(RichText::new("Right-click a profile for more").size(12.0).color(MUTED));
 
         ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
             ui.label(RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).size(12.0).color(MUTED));
@@ -389,13 +508,20 @@ impl App {
             if Self::nav_row(ui, "Settings", self.page == Page::General, false).clicked() {
                 self.page = Page::General;
             }
+            if let Some((text, at)) = &self.toast {
+                if at.elapsed() < Duration::from_secs(2) {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(text).size(12.5).color(ACCENT));
+                    ui.ctx().request_repaint_after(Duration::from_millis(500));
+                }
+            }
         });
     }
 
     // ---------------------------------------------------------------- profile
 
     fn preview(&mut self, ui: &mut Ui) {
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 170.0), egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 190.0), egui::Sense::hover());
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 10.0, BGS[self.bg].1);
         painter.rect_stroke(rect, 10.0, Stroke::new(1.0_f32, BORDER));
@@ -405,15 +531,28 @@ impl App {
             let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
             painter.image(t.id(), r, uv, Color32::WHITE);
         }
-        ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            let opts: Vec<(usize, &str)> = BGS.iter().enumerate().map(|(i, (n, _))| (i, *n)).collect();
-            seg(ui, &mut self.bg, &opts);
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // Right-to-left layout reverses the visual order.
-                seg(ui, &mut self.zoom, &[(true, "2x"), (false, "1x")]);
-            });
-        });
+
+        // Small controls inside the preview: background dots and a zoom toggle.
+        let y = rect.bottom() - 16.0;
+        for (i, (name, col)) in BGS.iter().enumerate() {
+            let c = egui::pos2(rect.left() + 18.0 + i as f32 * 22.0, y);
+            let hit = egui::Rect::from_center_size(c, vec2(20.0, 20.0));
+            let resp = ui.interact(hit, ui.id().with(("bg", i)), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(*name);
+            painter.circle_filled(c, 6.5, *col);
+            let ring = if self.bg == i { Stroke::new(2.0_f32, ACCENT) } else { Stroke::new(1.0_f32, Color32::from_rgb(90, 90, 105)) };
+            painter.circle_stroke(c, 8.5, ring);
+            if resp.clicked() {
+                self.bg = i;
+            }
+        }
+        let zr = egui::Rect::from_center_size(egui::pos2(rect.right() - 26.0, y), vec2(40.0, 22.0));
+        let zresp = ui.interact(zr, ui.id().with("zoom"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Zoom the preview");
+        let light = self.bg == 1;
+        painter.rect_filled(zr, 6.0, if light { Color32::from_rgb(60, 60, 70) } else { Color32::from_rgba_unmultiplied(0, 0, 0, 130) });
+        painter.text(zr.center(), Align2::CENTER_CENTER, if self.zoom { "2x" } else { "1x" }, FontId::proportional(12.5), Color32::WHITE);
+        if zresp.clicked() {
+            self.zoom = !self.zoom;
+        }
     }
 
     fn profile_page(&mut self, ui: &mut Ui, changed: &mut bool) {
@@ -426,7 +565,12 @@ impl App {
                 .frame(false)
                 .desired_width(320.0)
                 .hint_text("Profile name");
-            *changed |= ui.add(edit).changed();
+            let resp = ui.add(edit);
+            *changed |= resp.changed();
+            if self.focus_name {
+                resp.request_focus();
+                self.focus_name = false;
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if is_active {
                     pill(ui, "In use");
@@ -458,11 +602,23 @@ impl App {
         let p = &mut self.cfg.profiles[self.sel];
         ui.add_space(6.0);
         group(ui, "Cross", "Four lines around the center", &mut p.cross, changed, |ui, ch| {
-            row(ui, "Length", "", |ui| *ch |= slider(ui, &mut p.cross_len, 0..=40, " px"));
+            row(ui, "Length", "", |ui| *ch |= slider(ui, &mut p.cross_len, 0..=60, " px"));
+            row(ui, "Different vertical length", "Give the up and down lines their own length", |ui| *ch |= toggle(ui, &mut p.cross_split));
+            if p.cross_split {
+                row(ui, "Vertical length", "", |ui| *ch |= slider(ui, &mut p.cross_len_v, 0..=60, " px"));
+            }
             row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.cross_thick, 1..=12, " px"));
-            row(ui, "Gap", "Space around the center", |ui| *ch |= slider(ui, &mut p.cross_gap, 0..=30, " px"));
+            row(ui, "Gap", "Space around the center", |ui| *ch |= slider(ui, &mut p.cross_gap, 0..=40, " px"));
             row(ui, "Rotation", "45° makes an X", |ui| *ch |= slider(ui, &mut p.rotation, -180.0..=180.0, "°"));
             row(ui, "T-style", "Hide the top line", |ui| *ch |= toggle(ui, &mut p.t_style));
+        });
+        ui.add_space(10.0);
+        group(ui, "Brackets", "Rounded corners around the center", &mut p.brackets, changed, |ui, ch| {
+            row(ui, "Size", "The area the corners frame", |ui| *ch |= slider(ui, &mut p.brackets_size, 4..=160, " px"));
+            row(ui, "Arm length", "", |ui| *ch |= slider(ui, &mut p.brackets_arm, 1..=60, " px"));
+            row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.brackets_thick, 1..=12, " px"));
+            row(ui, "Corner radius", "0 gives sharp corners", |ui| *ch |= slider(ui, &mut p.brackets_radius, 0..=30, " px"));
+            row(ui, "Rotation", "45° gives diagonal corners", |ui| *ch |= slider(ui, &mut p.brackets_rotation, -180.0..=180.0, "°"));
         });
         ui.add_space(10.0);
         group(ui, "Dot", "A point in the center", &mut p.dot, changed, |ui, ch| {
@@ -471,14 +627,22 @@ impl App {
         });
         ui.add_space(10.0);
         group(ui, "Circle", "A ring around the center", &mut p.circle, changed, |ui, ch| {
-            row(ui, "Radius", "", |ui| *ch |= slider(ui, &mut p.circle_radius, 2..=80, " px"));
+            row(ui, "Radius", "", |ui| *ch |= slider(ui, &mut p.circle_radius, 2..=120, " px"));
             row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.circle_thick, 1..=12, " px"));
         });
         ui.add_space(10.0);
         group(ui, "Square", "A square frame around the center", &mut p.square, changed, |ui, ch| {
-            row(ui, "Size", "Side length", |ui| *ch |= slider(ui, &mut p.square_size, 2..=120, " px"));
+            row(ui, "Size", "Side length", |ui| *ch |= slider(ui, &mut p.square_size, 2..=160, " px"));
             row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.square_thick, 1..=12, " px"));
+            row(ui, "Rotation", "45° makes a diamond", |ui| *ch |= slider(ui, &mut p.square_rotation, -180.0..=180.0, "°"));
             row(ui, "Filled", "Solid square instead of a frame", |ui| *ch |= toggle(ui, &mut p.square_filled));
+        });
+        ui.add_space(10.0);
+        group(ui, "Chevron", "A ^ below the center", &mut p.chevron, changed, |ui, ch| {
+            row(ui, "Size", "", |ui| *ch |= slider(ui, &mut p.chevron_size, 2..=40, " px"));
+            row(ui, "Thickness", "", |ui| *ch |= slider(ui, &mut p.chevron_thick, 1..=12, " px"));
+            row(ui, "Distance", "From the center", |ui| *ch |= slider(ui, &mut p.chevron_offset, 0..=80, " px"));
+            row(ui, "Flip", "Put it above the center, pointing down", |ui| *ch |= toggle(ui, &mut p.chevron_flip));
         });
         ui.add_space(10.0);
         group(ui, "Custom image", "A PNG that replaces the shapes above", &mut p.use_image, changed, |ui, ch| {
@@ -664,6 +828,7 @@ impl App {
             caption(ui, "Behavior");
             card(ui, |ui| {
                 row(ui, "Show crosshair", "Turn the overlay on or off. Remembered after a restart.", |ui| *changed |= toggle(ui, &mut self.cfg.enabled));
+                row(ui, "Open settings when I start the app", "When you open the exe or a shortcut. Start with Windows always stays in the tray.", |ui| *changed |= toggle(ui, &mut self.cfg.open_settings_on_start));
                 row(ui, "Start with Windows", "Launches quietly in the tray", |ui| {
                     if toggle(ui, &mut self.autostart) {
                         win::set_autostart(self.autostart, &daemon_exe());
